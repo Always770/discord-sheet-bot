@@ -13,9 +13,10 @@ const client = new Client({
 
 let sheet;
 
-// 🔥 Clean readable date format
+// 🔥 Clean readable date format (Locked to Texas time)
 function formatDate(date) {
   return new Date(date).toLocaleString('en-US', {
+    timeZone: 'America/Chicago',
     year: 'numeric',
     month: 'long',
     day: 'numeric',
