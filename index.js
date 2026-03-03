@@ -13,6 +13,18 @@ const client = new Client({
 
 let sheet;
 
+// 🔥 Clean readable date format
+function formatDate(date) {
+  return new Date(date).toLocaleString('en-US', {
+    year: 'numeric',
+    month: 'long',
+    day: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+    hour12: true
+  });
+}
+
 async function initSheet() {
   const doc = new GoogleSpreadsheet(process.env.SHEET_ID);
 
@@ -39,7 +51,9 @@ async function syncAllMembers(guild) {
         Username: member.user.username,
         DisplayName: member.displayName,
         UserID: member.id,
-        JoinDate: member.joinedAt?.toISOString() || new Date().toISOString(),
+        JoinDate: member.joinedAt
+          ? formatDate(member.joinedAt)
+          : formatDate(new Date()),
         Roles: member.roles.cache.map(r => r.name).join(", "),
         LastActive: "Never",
         MessageCount: 0
@@ -64,7 +78,7 @@ client.on('guildMemberAdd', async (member) => {
       Username: member.user.username,
       DisplayName: member.displayName,
       UserID: member.id,
-      JoinDate: new Date().toISOString(),
+      JoinDate: formatDate(new Date()),
       Roles: member.roles.cache.map(r => r.name).join(", "),
       LastActive: "Never",
       MessageCount: 0
@@ -96,7 +110,7 @@ client.on('messageCreate', async (message) => {
     const row = rows.find(r => r.UserID === message.author.id);
 
     if (row) {
-      row.LastActive = new Date().toISOString();
+      row.LastActive = formatDate(new Date());
       row.MessageCount = (parseInt(row.MessageCount) || 0) + 1;
       await row.save();
     }
