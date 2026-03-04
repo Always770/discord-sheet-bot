@@ -11,11 +11,9 @@ const client = new Client({
 
 const ALERT_CHANNEL = "1477132090456936530";
 
+let membersSheet;
 let securitySheet;
-
-const joinTimes = new Map();
-const joinLeaveHistory = new Map();
-let recentJoins = [];
+let doc;
 
 function accountAge(created) {
 
@@ -34,7 +32,7 @@ function accountAge(created) {
 
 async function setupSheets(){
 
-  const doc = new GoogleSpreadsheet(process.env.SHEET_ID);
+  doc = new GoogleSpreadsheet(process.env.SHEET_ID);
 
   await doc.useServiceAccountAuth({
     client_email: process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL,
@@ -42,6 +40,8 @@ async function setupSheets(){
   });
 
   await doc.loadInfo();
+
+  membersSheet = doc.sheetsByIndex[0];
 
   if(doc.sheetsByIndex[1]){
     securitySheet = doc.sheetsByIndex[1];
@@ -78,20 +78,11 @@ client.once("ready", async ()=>{
 
   await setupSheets();
 
-  const guild = client.guilds.cache.first();
-  await guild.members.fetch();
-
-  guild.members.cache.forEach(member => {
-    joinTimes.set(member.id, member.joinedAt.getTime());
-  });
-
   console.log("Security bot ready");
 
 });
 
 client.on("guildMemberAdd", async member=>{
-
-  joinTimes.set(member.id, Date.now());
 
   const age = accountAge(member.user.createdAt);
 
@@ -103,14 +94,6 @@ client.on("guildMemberAdd", async member=>{
   if(ageDays < 30){
     flag="YES";
     reason="Very new account";
-  }
-
-  recentJoins.push(Date.now());
-  recentJoins = recentJoins.filter(t => Date.now()-t < 60000);
-
-  if(recentJoins.length >= 5){
-    flag="YES";
-    reason="Raid-type join pattern";
   }
 
   await logEvent({
@@ -126,34 +109,27 @@ client.on("guildMemberAdd", async member=>{
 
 client.on("guildMemberRemove", async member=>{
 
-  const joinTime = joinTimes.get(member.id);
+  const rows = await membersSheet.getRows();
+
+  const row = rows.find(r => r.UserID === member.id);
 
   let stayed="-";
+
+  if(row && row.JoinDate){
+
+    const joinDate = new Date(row.JoinDate);
+    const seconds = Math.floor((Date.now()-joinDate)/1000);
+
+    stayed = `${seconds} sec`;
+
+  }
+
   let flag="NO";
   let reason="-";
 
-  if(joinTime){
-
-    const sec = Math.floor((Date.now()-joinTime)/1000);
-    stayed=`${sec} sec`;
-
-    if(sec < 60){
-      flag="YES";
-      reason="Left under 60 seconds";
-    }
-
-    let history = joinLeaveHistory.get(member.id) || [];
-    history.push(Date.now());
-
-    history = history.filter(t => Date.now()-t < 600000);
-
-    if(history.length >= 3){
-      flag="YES";
-      reason="Join/leave scouting pattern";
-    }
-
-    joinLeaveHistory.set(member.id, history);
-
+  if(stayed !== "-" && parseInt(stayed) < 60){
+    flag="YES";
+    reason="Left under 60 seconds";
   }
 
   const age = accountAge(member.user.createdAt);
