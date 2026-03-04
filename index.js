@@ -3,7 +3,10 @@ const { GoogleSpreadsheet } = require('google-spreadsheet');
 require('dotenv').config();
 
 const client = new Client({
-  intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMembers]
+  intents: [
+    GatewayIntentBits.Guilds,
+    GatewayIntentBits.GuildMembers
+  ]
 });
 
 const ALERT_CHANNEL = "1477132090456936530";
@@ -15,7 +18,9 @@ const joinLeaveHistory = new Map();
 let recentJoins = [];
 
 function accountAge(created) {
+
   const diff = Date.now() - created.getTime();
+
   const hours = Math.floor(diff / (1000*60*60));
   const days = Math.floor(hours/24);
   const months = Math.floor(days/30);
@@ -27,7 +32,7 @@ function accountAge(created) {
   return `${hours} hours`;
 }
 
-async function setupSheets() {
+async function setupSheets(){
 
   const doc = new GoogleSpreadsheet(process.env.SHEET_ID);
 
@@ -38,7 +43,7 @@ async function setupSheets() {
 
   await doc.loadInfo();
 
-  if (doc.sheetsByIndex[1]) {
+  if(doc.sheetsByIndex[1]){
     securitySheet = doc.sheetsByIndex[1];
   } else {
     securitySheet = await doc.addSheet({
@@ -54,22 +59,34 @@ async function logEvent(data){
   await securitySheet.addRow(data);
 
   if(data.Flag === "YES"){
-    const ch = await client.channels.fetch(ALERT_CHANNEL);
 
-    ch.send(`⚠️ Security Flag
+    const channel = await client.channels.fetch(ALERT_CHANNEL);
+
+    channel.send(`⚠️ Security Flag
 
 UserID: ${data.UserID}
 Event: ${data.Event}
 TimeStayed: ${data.TimeStayed}
 AccountAge: ${data.AccountAge}
 Reason: ${data.Reason}`);
+
   }
 
 }
 
 client.once("ready", async ()=>{
+
   await setupSheets();
+
+  const guild = client.guilds.cache.first();
+  await guild.members.fetch();
+
+  guild.members.cache.forEach(member => {
+    joinTimes.set(member.id, member.joinedAt.getTime());
+  });
+
   console.log("Security bot ready");
+
 });
 
 client.on("guildMemberAdd", async member=>{
@@ -88,7 +105,6 @@ client.on("guildMemberAdd", async member=>{
     reason="Very new account";
   }
 
-  // RAID JOIN DETECTION
   recentJoins.push(Date.now());
   recentJoins = recentJoins.filter(t => Date.now()-t < 60000);
 
