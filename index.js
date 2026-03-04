@@ -109,19 +109,25 @@ client.on("guildMemberAdd", async member=>{
 
 client.on("guildMemberRemove", async member=>{
 
-  const rows = await membersSheet.getRows();
+  let stayed = "-";
 
-  const row = rows.find(r => String(r.UserID) === String(member.id));
+  try {
 
-  let stayed="-";
+    const rows = await membersSheet.getRows();
 
-  if(row && row.JoinDate){
+    const row = rows.find(r => String(r.UserID) === String(member.id));
 
-    const joinDate = new Date(row.JoinDate);
-    const seconds = Math.floor((Date.now()-joinDate)/1000);
+    if(row && row.JoinDate){
 
-    stayed = `${seconds} sec`;
+      const joinDate = new Date(row.JoinDate);
+      const seconds = Math.floor((Date.now()-joinDate)/1000);
 
+      stayed = `${seconds} sec`;
+
+    }
+
+  } catch (err) {
+    console.log("Join lookup failed:", err.message);
   }
 
   let flag="NO";
