@@ -111,7 +111,7 @@ client.on("guildMemberRemove", async member=>{
 
   const rows = await membersSheet.getRows();
 
-  const row = rows.find(r => r.UserID === member.id);
+  const row = rows.find(r => String(r.UserID) === String(member.id));
 
   let stayed="-";
 
