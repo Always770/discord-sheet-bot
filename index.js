@@ -11,9 +11,12 @@ const client = new Client({
   ]
 });
 
-let sheet;
+const SECURITY_CHANNEL_ID = "1477132090456936530";
 
-// 🔥 Clean readable date format (Locked to Texas time)
+let sheet;
+let securitySheet;
+const joinTimes = new Map();
+
 function formatDate(date) {
   return new Date(date).toLocaleString('en-US', {
     timeZone: 'America/Chicago',
@@ -26,6 +29,20 @@ function formatDate(date) {
   });
 }
 
+function getAccountAge(createdAt) {
+  const diff = Date.now() - createdAt.getTime();
+
+  const hours = Math.floor(diff / (1000 * 60 * 60));
+  const days = Math.floor(diff / (1000 * 60 * 60 * 24));
+  const months = Math.floor(days / 30);
+  const years = Math.floor(days / 365);
+
+  if (years >= 1) return `${years} years`;
+  if (months >= 1) return `${months} months`;
+  if (days >= 1) return `${days} days`;
+  return `${hours} hours`;
+}
+
 async function initSheet() {
   const doc = new GoogleSpreadsheet(process.env.SHEET_ID);
 
@@ -35,45 +52,64 @@ async function initSheet() {
   });
 
   await doc.loadInfo();
+
   sheet = doc.sheetsByIndex[0];
+
+  if (doc.sheetsByIndex[1]) {
+    securitySheet = doc.sheetsByIndex[1];
+  } else {
+    securitySheet = await doc.addSheet({
+      title: "SecurityLogs",
+      headerValues: [
+        "UserID",
+        "Event",
+        "TimeStayed",
+        "AccountAge",
+        "Flag",
+        "Reason"
+      ]
+    });
+  }
 }
 
-async function syncAllMembers(guild) {
-  const rows = await sheet.getRows();
-  const existingIDs = rows.map(r => r.UserID);
+async function logSecurity(data) {
+  await securitySheet.addRow(data);
 
-  await guild.members.fetch();
+  if (data.Flag === "YES") {
+    const channel = await client.channels.fetch(SECURITY_CHANNEL_ID);
 
-  for (const member of guild.members.cache.values()) {
-    if (member.user.bot) continue;
+    channel.send(
+`⚠️ Security Flag
 
-    if (!existingIDs.includes(member.id)) {
-      await sheet.addRow({
-        Username: member.user.username,
-        DisplayName: member.displayName,
-        UserID: member.id,
-        JoinDate: member.joinedAt
-          ? formatDate(member.joinedAt)
-          : formatDate(new Date()),
-        Roles: member.roles.cache.map(r => r.name).join(", "),
-        LastActive: "Never",
-        MessageCount: 0
-      });
-    }
+User ID: ${data.UserID}
+Event: ${data.Event}
+Time Stayed: ${data.TimeStayed}
+Account Age: ${data.AccountAge}
+Reason: ${data.Reason}`
+    );
   }
-
-  console.log("Finished syncing existing members.");
 }
 
 client.once('ready', async () => {
   console.log(`Logged in as ${client.user.tag}`);
   await initSheet();
-
-  const guild = client.guilds.cache.first();
-  await syncAllMembers(guild);
 });
 
 client.on('guildMemberAdd', async (member) => {
+
+  joinTimes.set(member.id, Date.now());
+
+  const accountAge = getAccountAge(member.user.createdAt);
+
+  await logSecurity({
+    UserID: member.id,
+    Event: "Join",
+    TimeStayed: "-",
+    AccountAge: accountAge,
+    Flag: "NO",
+    Reason: "-"
+  });
+
   try {
     await sheet.addRow({
       Username: member.user.username,
@@ -85,22 +121,37 @@ client.on('guildMemberAdd', async (member) => {
       MessageCount: 0
     });
   } catch (err) {
-    console.error("Error adding new member:", err);
+    console.error(err);
   }
 });
 
-client.on('guildMemberUpdate', async (oldMember, newMember) => {
-  try {
-    const rows = await sheet.getRows();
-    const row = rows.find(r => r.UserID === newMember.id);
+client.on('guildMemberRemove', async (member) => {
 
-    if (row) {
-      row.Roles = newMember.roles.cache.map(r => r.name).join(", ");
-      await row.save();
+  const joinTime = joinTimes.get(member.id);
+  let timeStayed = "-";
+  let flag = "NO";
+  let reason = "-";
+
+  if (joinTime) {
+    const seconds = Math.floor((Date.now() - joinTime) / 1000);
+    timeStayed = `${seconds} sec`;
+
+    if (seconds < 60) {
+      flag = "YES";
+      reason = "Left under 60 seconds";
     }
-  } catch (err) {
-    console.error("Error updating roles:", err);
   }
+
+  const accountAge = getAccountAge(member.user.createdAt);
+
+  await logSecurity({
+    UserID: member.id,
+    Event: "Leave",
+    TimeStayed: timeStayed,
+    AccountAge: accountAge,
+    Flag: flag,
+    Reason: reason
+  });
 });
 
 client.on('messageCreate', async (message) => {
@@ -116,7 +167,7 @@ client.on('messageCreate', async (message) => {
       await row.save();
     }
   } catch (err) {
-    console.error("Error updating activity:", err);
+    console.error(err);
   }
 });
 
